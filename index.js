@@ -1,3 +1,27 @@
+/**
+ * @license
+ * MIT License
+ * Copyright (c) 2023 George Lejnine
+
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import fs from 'fs'
 import path from 'path'
 import FormData from 'form-data'
@@ -13,6 +37,52 @@ export default class EmailListVerify {
         this.apiKey = apiKey
     }
 
+    /**
+     * Verify a single email address.
+     * @param {string} email The email to be verified
+     * @param {number} timeout The maximum time in seconds to try to verify the address, defaults to 30 seconds
+     * @returns {EmailVerificationStatus} 
+     */
+    async verifySingleEmail(email, timeout = 30) {
+        let url = `${this.baseUrl}/verifyEmail?secret=${this.apiKey}&email=${email}&timeout=${timeout}`
+        const response = await axios.get(url);
+        switch (response.data) {
+            case 'ok':
+                return EmailListVerify.ok;
+            case 'fail':
+                return EmailListVerify.fail;
+            case 'unknown':
+                return EmailListVerify.unknown;
+            case 'incorrect':
+                return EmailListVerify.incorrect;
+            case 'key_not_valid':
+                throw new Error('Invalid API Key')
+            case 'missing parameters':
+                throw new Error('Missing parameters')
+        }
+    }
+
+    /**
+     * Enum of single email verifcation status
+     * ok	The supplied email address has passed all verification tests
+     * fail	The supplied email address has failed one or more tests
+     * unknown	The supplied email address can not be accurately tested
+     * incorrect	No email address was provided in the request or it contains a syntax error
+     * @enum {string}
+     */
+    EmailVerificationStatus = {
+        ok: 'ok',
+        fail: 'fail',
+        unknown: 'unknown',
+        incorrect: 'incorrect'
+    }
+
+    /** 
+     * Upload a CSV file with emails to perform bulk email verification.
+     * See more details at https://www.emaillistverify.com/docs/#section/File-Verification
+     * @param {string} filePath - The full path to the CSV file you want to upload and verify
+     * @returns {number} - fileId to use in checkStatus
+    */
     async bulkUpload(filePath) {
         if (!filePath) {
             throw new Error(`Missing File Path`)
@@ -29,7 +99,7 @@ export default class EmailListVerify {
             },
         });
 
-        switch(response.data){
+        switch (response.data) {
             case 'no_credit':
                 throw new Error('Insufficient credits. Your current account balance is $0')
             case 'cannot_upload_file':
@@ -39,10 +109,16 @@ export default class EmailListVerify {
             case 'missing parameters':
                 throw new Error('Missing parameters')
             default:
-                return {fileId: parseInt(response.data)}
+                return parseInt(response.data)
         }
     }
 
+
+    /**
+     * Checks the status of a bulk upload verifcation.
+     * @param {number} fileId The fileId returned from bulkUpload
+     * @returns {Promise<VerficationStatus>} 
+     */
     async checkStatus(fileId) {
         if (!fileId) {
             throw new Error(`Missing File ID`)
@@ -58,10 +134,28 @@ export default class EmailListVerify {
                     throw new Error(`Invalid File Id`)
             }
         }
-
         return this._parseStatusResults(res)
     }
 
+
+    /**
+     * @typedef {Object} VerficationStatus
+     * @property {number} fileId The fileId of the request
+     * @property {string} fileName The original uploaded file name
+     * @property {boolean} unique Indicates if the remove duplicates option was selected during file upload.
+     * @property {number} totalLines Total number of parsed emails in the file.
+     * @property {number} linesProcessed Number of emails processed so far
+     * @property {number} percentageCompleted Percentage of file processed, range 0 - 1
+     * @property {string} status File status. It will be one of "new", "parsing", "incorrect", "waiting", "progress", "suspended", "canceled", "finished".
+     * @property {Date} timestamp Date when the file was uploaded
+     * @property {string} linkOk Link to the report containing email addresses that have passed verification. Will be empty if the file has not finished processing.
+     * @property {string} linkAll Link to the report containing all supplied email addresses. Will be empty if the file has not finished processing.
+     */
+
+    /**
+     * @private
+     * @returns {VerficationStatus}
+     */
     _parseStatusResults(responseData) {
         let data = responseData.data.split('|')
         if (data[0] === 'key_not_valid') {
@@ -72,7 +166,7 @@ export default class EmailListVerify {
 
         return {
             fileId: parseInt(data[0]),
-            filename: data[1],
+            fileName: data[1],
             unique: data[2] === 'yes' ? true : false,
             totalLines: parseInt(data[3]),
             linesProcessed: parseInt(data[4]),
@@ -84,3 +178,4 @@ export default class EmailListVerify {
         }
     }
 }
+
