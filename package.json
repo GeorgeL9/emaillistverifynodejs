@@ -1,6 +1,6 @@
 {
   "name": "emaillistverifynodejs",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Node.js utility library to use the EmailListVerify.com API",
   "main": "index.js",
   "type": "module",
